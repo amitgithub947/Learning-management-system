@@ -6,8 +6,10 @@ using PdfSharp.Fonts;
 using PdfSharp.Pdf;
 namespace LMS.Infrastructure.Certificates;
 
+/// <summary>Renders certificate snapshots using embedded fonts and an explicit display timezone.</summary>
 public sealed class CertificateRenderer : ICertificateRenderer
 {
+    // PDFsharp font configuration is process-wide; guard resolver initialization across concurrent renders.
     private static readonly object FontLock = new();
     private readonly TimeZoneInfo timeZone;
     public CertificateRenderer(IConfiguration configuration) { timeZone = TimeZoneInfo.FindSystemTimeZoneById(configuration["Certificates:DisplayTimeZone"] ?? "UTC"); lock (FontLock) { GlobalFontSettings.FontResolver ??= new CertificateFontResolver(); } }

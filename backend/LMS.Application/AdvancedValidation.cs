@@ -10,6 +10,7 @@ public sealed class CreateAssignmentValidator : AbstractValidator<CreateAssignme
         RuleFor(x => x).Custom((r, context) => { var result = new AssignmentValidator().Validate(new AssignmentRequest(r.Title, r.Description, r.DueDate, r.MaximumMarks, r.PassingPercentage, r.IsRequired)); foreach (var error in result.Errors) context.AddFailure(error); });
     }
 }
+// At least one requirement group must be enabled; activity existence is checked during evaluation.
 public sealed class CompletionSettingsValidator : AbstractValidator<CompletionSettings>
 { public CompletionSettingsValidator() { RuleFor(x => x).Must(x => x.RequireLessons || x.RequireAssignments || x.RequireQuizzes).WithMessage("Enable at least one completion requirement."); } }
 public sealed class QuizValidator : AbstractValidator<QuizRequest>
@@ -23,6 +24,7 @@ public sealed class QuizValidator : AbstractValidator<QuizRequest>
         RuleForEach(x => x.Questions).SetValidator(new QuestionValidator());
     }
 }
+// Validate the answer key against the question type before it can be used for automatic scoring.
 public sealed class QuestionValidator : AbstractValidator<QuestionRequest>
 {
     public QuestionValidator()
@@ -40,6 +42,7 @@ public sealed class QuestionValidator : AbstractValidator<QuestionRequest>
         }).WithMessage("Choice questions need 2–8 options and valid correct answers. Text questions need an expected answer and no options.");
     }
 }
+// Reject duplicate question/option IDs before scoring; service checks also enforce quiz membership.
 public sealed class QuizSubmitValidator : AbstractValidator<QuizSubmitRequest>
 {
     public QuizSubmitValidator()

@@ -4,6 +4,7 @@ using LMS.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 namespace LMS.Infrastructure;
 
+/// <summary>Owns quiz authorization, server deadlines, scoring and immutable attempt results.</summary>
 public sealed class QuizService(ApplicationDbContext db, ICurrentUser user, CourseAccess access, ICompletionService completion, IUnitOfWork work, TimeProvider clock) : IQuizService
 {
     public Task<QuizDto> CreateAsync(QuizRequest r, CancellationToken ct) => work.ExecuteAsync(async token =>
@@ -45,6 +46,7 @@ public sealed class QuizService(ApplicationDbContext db, ICurrentUser user, Cour
         RequireStudent(); var quiz = await FindAsync(quizId, token); await AuthorizeAsync(quiz, token);
         if (!quiz.IsPublished) throw AppException.NotFound("Published quiz");
         var questions = await QuestionsAsync(quizId, false, token); if (questions.Count == 0) throw AppException.Conflict("This quiz has no questions.");
+        // Resume a live attempt; close an expired attempt before creating its replacement.
         var active = await db.QuizAttempts.SingleOrDefaultAsync(a => a.QuizId == quizId && a.StudentId == user.Id && a.CompletedAt == null, token);
         if (active is not null) { if (!Expire(active)) return BuildAttempt(active, quiz, questions); await db.SaveChangesAsync(token); }
         var maximum = questions.Sum(q => q.Marks);
@@ -73,10 +75,12 @@ public sealed class QuizService(ApplicationDbContext db, ICurrentUser user, Cour
             if (question.QuestionType == QuestionType.SingleChoice && selected.Count > 1) throw new AppException(400, "Select one answer for a single-choice question.");
             if (question.QuestionType == QuestionType.FreeText && selected.Count > 0) throw new AppException(400, "Text answers cannot contain selected options.");
             if (question.QuestionType != QuestionType.FreeText && !string.IsNullOrEmpty(answer?.Text)) throw new AppException(400, "Choice questions cannot contain a text answer.");
+            // Choice answers require the exact correct set. Text comparison ignores case and normalizes Unicode.
             var correct = question.QuestionType == QuestionType.FreeText
                 ? !string.IsNullOrWhiteSpace(answer?.Text) && string.Equals(answer.Text.Trim().Normalize(), question.ExpectedAnswer?.Trim().Normalize(), StringComparison.OrdinalIgnoreCase)
                 : selected.Count > 0 && selected.ToHashSet().SetEquals(question.Options.Where(o => o.IsCorrect == true).Select(o => o.OptionId));
             var marks = correct ? question.Marks : 0; total += marks;
+            // Multiple selected options use separate rows; award question marks only once.
             if (selected.Count == 0) db.QuizAnswers.Add(new QuizAnswer { QuizAttemptId = id, QuestionId = question.QuestionId, Text = answer?.Text, AwardedMarks = marks });
             else for (var i = 0; i < selected.Count; i++) db.QuizAnswers.Add(new QuizAnswer { QuizAttemptId = id, QuestionId = question.QuestionId, SelectedOptionId = selected[i], AwardedMarks = i == 0 ? marks : 0 });
         }
@@ -107,6 +111,7 @@ public sealed class QuizService(ApplicationDbContext db, ICurrentUser user, Cour
     private async Task AuthorizeResultAsync(QuizAttempt attempt, CancellationToken ct)
     { var manager = await AuthorizeAsync(attempt.Quiz, ct); if (!manager && attempt.StudentId != user.Id) throw AppException.Forbidden(); }
     private void RequireStudent() { if (!user.IsInRole(Roles.Student)) throw AppException.Forbidden(); }
+    // The server clock is authoritative, including at the exact deadline; late attempts score zero.
     private bool Expire(QuizAttempt attempt)
     {
         if (attempt.CompletedAt is not null || !attempt.ExpiresAt.HasValue || clock.GetUtcNow() < attempt.ExpiresAt.Value) return false;
@@ -114,6 +119,7 @@ public sealed class QuizService(ApplicationDbContext db, ICurrentUser user, Cour
     }
     private async Task<Quiz> FindAsync(Guid id, CancellationToken ct) => await db.Quizzes.SingleOrDefaultAsync(q => q.Id == id, ct) ?? throw AppException.NotFound("Quiz");
     private async Task<QuizAttempt> FindAttemptAsync(Guid id, CancellationToken ct) => await db.QuizAttempts.Include(a => a.Quiz).SingleOrDefaultAsync(a => a.Id == id, ct) ?? throw AppException.NotFound("Quiz attempt");
+    // Keep answer keys null for Student quiz/attempt DTOs; reveal only for authorized keys or completed reviews.
     private async Task<List<QuestionDto>> QuestionsAsync(Guid id, bool reveal, CancellationToken ct)
     {
         var questions = await db.Questions.AsNoTracking().Where(q => q.QuizId == id).OrderBy(q => q.SequenceNumber).ToListAsync(ct); var ids = questions.Select(q => q.Id).ToList();

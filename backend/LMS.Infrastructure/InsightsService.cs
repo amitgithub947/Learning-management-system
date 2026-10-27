@@ -4,6 +4,7 @@ using LMS.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 namespace LMS.Infrastructure;
 
+/// <summary>Builds catalog outlines and role-scoped dashboard projections from saved records.</summary>
 public sealed class InsightsService(ApplicationDbContext db, ICurrentUser user, CourseAccess access) : IInsightsService
 {
     public async Task<IReadOnlyList<string>> CategoriesAsync(CancellationToken ct) => await db.Courses.AsNoTracking().Where(c => c.Status == CourseStatus.Published).Select(c => c.Category).Distinct().OrderBy(c => c).ToListAsync(ct);
@@ -12,6 +13,7 @@ public sealed class InsightsService(ApplicationDbContext db, ICurrentUser user, 
         var c = await db.Courses.AsNoTracking().SingleOrDefaultAsync(c => c.Id == id, ct) ?? throw AppException.NotFound("Course");
         if (c.Status != CourseStatus.Published && !access.CanManage(c)) throw AppException.NotFound("Course");
         var trainer = await db.Users.AsNoTracking().Where(u => u.Id == c.TrainerId).Select(u => u.Name).SingleAsync(ct);
+        // Public previews include lesson metadata but exclude protected content and video URLs.
         var outline = await db.Lessons.AsNoTracking().Where(l => l.CourseId == id).OrderBy(l => l.SequenceNumber).Select(l => new LessonOutlineDto(l.Id, l.Title, l.SequenceNumber, l.DurationMinutes)).ToListAsync(ct);
         var count = await db.Enrollments.AsNoTracking().CountAsync(e => e.CourseId == id && e.Status != EnrollmentStatus.Cancelled, ct);
         var isEnrolled = user.Id != Guid.Empty && await db.Enrollments.AsNoTracking().AnyAsync(e => e.CourseId == id && e.StudentId == user.Id && e.Status != EnrollmentStatus.Cancelled, ct);

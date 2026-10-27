@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace LMS.Application;
 
+/// <summary>Application persistence port; the scoped EF context supplies tracked sets and saving.</summary>
 public interface ILmsDbContext
 {
     DbSet<Course> Courses { get; }
@@ -20,6 +21,7 @@ public interface ILmsDbContext
     DbSet<Certificate> Certificates { get; }
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
 }
+/// <summary>Caller identity supplied by the hosting layer, not by API request bodies.</summary>
 public interface ICurrentUser
 {
     Guid Id { get; }

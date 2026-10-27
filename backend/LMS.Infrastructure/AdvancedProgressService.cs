@@ -4,6 +4,7 @@ using LMS.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 namespace LMS.Infrastructure;
 
+/// <summary>Exposes authorized completion settings, Student summaries and course outcome analytics.</summary>
 public sealed class AdvancedProgressService(ApplicationDbContext db, ICurrentUser user, CourseAccess access, ICompletionService completion, IUnitOfWork work) : IAdvancedProgressService
 {
     public Task<CompletionDto> SummaryAsync(Guid courseId, CancellationToken ct) => work.ExecuteAsync(async token =>

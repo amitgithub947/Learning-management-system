@@ -1,6 +1,7 @@
 using LMS.Domain;
 namespace LMS.Application;
 
+/// <summary>Executes a database operation atomically; callbacks must tolerate transient retries.</summary>
 public interface IUnitOfWork
 {
     Task<T> ExecuteAsync<T>(Func<CancellationToken, Task<T>> action, CancellationToken ct);
@@ -10,6 +11,7 @@ public sealed record CompletionSettings(bool RequireLessons, bool RequireAssignm
 public sealed record AssignmentPerformanceDto(Guid AssignmentId, string Title, bool IsRequired, decimal MaximumMarks, decimal PassingPercentage, Guid? SubmissionId, SubmissionStatus? Status, decimal? Marks, string? Feedback, bool IsPassed);
 public sealed record QuizPerformanceDto(Guid QuizId, string Title, bool IsRequired, decimal PassingPercentage, int Attempts, decimal? BestPercentage, bool IsPassed);
 public sealed record CompletionDto(Guid CourseId, string CourseTitle, int TotalLessons, int CompletedLessons, int RemainingLessons, int Percentage, EnrollmentStatus Status, DateTimeOffset? CompletedAt, bool IsEligible, CompletionSettings Settings, int RequiredLessons, int RequiredLessonsCompleted, IReadOnlyList<AssignmentPerformanceDto> Assignments, IReadOnlyList<QuizPerformanceDto> Quizzes, IReadOnlyList<string> UnmetRequirements, Guid? CertificateId);
+/// <summary>Evaluates persisted requirements and updates the tracked enrollment; the caller saves/commits.</summary>
 public interface ICompletionService
 {
     Task<CompletionDto> EvaluateAsync(Guid courseId, Guid studentId, CancellationToken ct);

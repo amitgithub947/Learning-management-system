@@ -12,6 +12,7 @@ public sealed class Account : IdentityUser<Guid>
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
     public bool IsActive { get; set; } = true;
 }
+/// <summary>Stores hashed refresh credentials and family lineage for rotation/reuse detection.</summary>
 public sealed class RefreshToken : Entity
 {
     public Guid UserId { get; set; }
@@ -23,6 +24,7 @@ public sealed class RefreshToken : Entity
     public string? ReplacedByHash { get; set; }
     public byte[] RowVersion { get; set; } = [];
 }
+/// <summary>Maps Identity and learning records, including integrity constraints that back service checks.</summary>
 public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options) : IdentityDbContext<Account, IdentityRole<Guid>, Guid>(options), ILmsDbContext
 {
     public DbSet<Course> Courses => Set<Course>();

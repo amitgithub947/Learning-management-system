@@ -4,10 +4,12 @@ using LMS.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 namespace LMS.Infrastructure;
 
+/// <summary>Derives eligibility from persisted lessons, grades and attempts, never client percentages.</summary>
 public sealed class CompletionService(ApplicationDbContext db, TimeProvider clock) : ICompletionService
 {
     public async Task EnsureCurriculumMutableAsync(Guid courseId, CancellationToken ct)
     {
+        // Freeze curriculum requirements once a certificate relies on them.
         if (await db.Certificates.AsNoTracking().AnyAsync(c => c.CourseId == courseId, ct))
             throw AppException.Conflict("Completion requirements are locked after the first certificate is issued. Create a new course version to change the curriculum.");
     }
@@ -42,15 +44,18 @@ public sealed class CompletionService(ApplicationDbContext db, TimeProvider cloc
         var requiredLessons = lessons.Where(l => l.IsRequired).ToList();
         var doneRequired = requiredLessons.Count(l => completed.Contains(l.Id));
         var activities = (course.RequireLessons ? requiredLessons.Count : 0) + (course.RequireAssignments ? assignmentRows.Count(a => a.IsRequired) : 0) + (course.RequireQuizzes ? quizRows.Count(q => q.IsRequired) : 0);
+        // An empty course must not qualify through vacuous "all requirements passed" checks.
         if (activities == 0) unmet.Add("The course needs at least one required learning activity.");
         if (course.Status != CourseStatus.Published) unmet.Add("The course must be published.");
         if (course.RequireLessons && doneRequired < requiredLessons.Count) unmet.Add($"Complete {requiredLessons.Count - doneRequired} required lesson(s).");
         if (course.RequireAssignments) foreach (var a in assignmentRows.Where(a => a.IsRequired && !a.IsPassed)) unmet.Add($"Pass assignment: {a.Title} ({a.PassingPercentage}% required).");
         if (course.RequireQuizzes) foreach (var q in quizRows.Where(q => q.IsRequired && !q.IsPassed)) unmet.Add($"Pass quiz: {q.Title} ({q.PassingPercentage}% required).");
         var eligible = unmet.Count == 0;
+        // Preserve the first completion timestamp on repeated evaluations; reopen unmet enrollments.
         if (eligible) { enrollment.Status = EnrollmentStatus.Completed; enrollment.CompletedAt ??= clock.GetUtcNow(); }
         else if (enrollment.Status == EnrollmentStatus.Completed) { enrollment.Status = EnrollmentStatus.Active; enrollment.CompletedAt = null; }
         var certificateId = await db.Certificates.AsNoTracking().Where(c => c.CourseId == courseId && c.StudentId == studentId).Select(c => (Guid?)c.Id).SingleOrDefaultAsync(ct);
+        // Lesson progress is a display metric distinct from assessment-based eligibility, with zero-safe division.
         return new(courseId, course.Title, lessons.Count, completed.Count, Math.Max(0, lessons.Count - completed.Count), lessons.Count == 0 ? 0 : (int)Math.Round(100m * completed.Count / lessons.Count),
             enrollment.Status, enrollment.CompletedAt, eligible, new(course.RequireLessons, course.RequireAssignments, course.RequireQuizzes), requiredLessons.Count, doneRequired, assignmentRows, quizRows, unmet, certificateId);
     }

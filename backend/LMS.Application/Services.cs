@@ -3,6 +3,7 @@ using LMS.Domain;
 using Microsoft.EntityFrameworkCore;
 namespace LMS.Application;
 
+// Expression projections allow EF Core to select DTO fields in SQL instead of loading full entities.
 public static class DtoMaps
 {
     public static readonly Expression<Func<Course, CourseDto>> Course = c => new(c.Id, c.Title, c.Description, c.TrainerId, c.Category, c.ThumbnailUrl, c.Status, c.CreatedAt, c.UpdatedAt);
@@ -19,6 +20,7 @@ public static class DtoMaps
         return new(await query.Skip((page.PageNumber - 1) * page.PageSize).Take(page.PageSize).ToListAsync(ct), page.PageNumber, page.PageSize, count);
     }
 }
+/// <summary>Centralizes owner/Admin management and enrolled-Student access to course content.</summary>
 public sealed class CourseAccess(ILmsDbContext db, ICurrentUser user)
 {
     public bool CanManage(Course course) => user.IsInRole(Roles.Admin) || (user.IsInRole(Roles.Trainer) && course.TrainerId == user.Id);
@@ -37,6 +39,7 @@ public sealed class CourseAccess(ILmsDbContext db, ICurrentUser user)
             throw AppException.Forbidden();
     }
 }
+/// <summary>Separates the public published catalog from authorized course management.</summary>
 public sealed class CourseService(ILmsDbContext db, ICurrentUser user, CourseAccess access)
 {
     public Task<Page<CourseDto>> ListAsync(CourseQuery query, CancellationToken ct)
@@ -97,6 +100,7 @@ public sealed class CourseService(ILmsDbContext db, ICurrentUser user, CourseAcc
     private static void Apply(Course course, CourseRequest request)
     { course.Title = request.Title.Trim(); course.Description = request.Description; course.Category = request.Category.Trim(); course.ThumbnailUrl = request.ThumbnailUrl; course.UpdatedAt = DateTimeOffset.UtcNow; }
 }
+/// <summary>Manages curriculum and records lesson completion together with enrollment reevaluation.</summary>
 public sealed class LessonService(ILmsDbContext db, ICurrentUser user, CourseAccess access, ICompletionService completion, IUnitOfWork unitOfWork)
 {
     public async Task<Page<LessonDto>> ListAsync(Guid courseId, PageQuery page, CancellationToken ct)
@@ -149,6 +153,7 @@ public sealed class LessonService(ILmsDbContext db, ICurrentUser user, CourseAcc
     }
     private static void Apply(Lesson l, LessonRequest r) { l.Title = r.Title.Trim(); l.Content = r.Content; l.VideoUrl = r.VideoUrl; l.SequenceNumber = r.SequenceNumber; l.DurationMinutes = r.DurationMinutes; l.IsRequired = r.IsRequired; }
 }
+/// <summary>Enrolls the current Student while preserving uniqueness and course publication rules.</summary>
 public sealed class EnrollmentService(ILmsDbContext db, ICurrentUser user, CourseAccess access)
 {
     public async Task<EnrollmentDto> EnrollAsync(Guid courseId, CancellationToken ct)

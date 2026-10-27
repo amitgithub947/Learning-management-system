@@ -2,6 +2,7 @@ using LMS.Domain;
 using Microsoft.EntityFrameworkCore;
 namespace LMS.Application;
 
+/// <summary>Enforces assignment ownership, submission deadlines and authorized grading.</summary>
 public sealed class AssignmentService(ILmsDbContext db, ICurrentUser user, CourseAccess access, ICompletionService completion, IUnitOfWork unitOfWork, TimeProvider clock)
 {
     public Task<AssignmentDto> CreateAsync(Guid courseId, AssignmentRequest r, CancellationToken ct) => unitOfWork.ExecuteAsync(async token =>
@@ -21,6 +22,7 @@ public sealed class AssignmentService(ILmsDbContext db, ICurrentUser user, Cours
     public Task<AssignmentDto> UpdateAsync(Guid id, AssignmentRequest r, CancellationToken ct) => unitOfWork.ExecuteAsync(async token =>
     {
         var a = await db.Assignments.SingleOrDefaultAsync(a => a.Id == id, token) ?? throw AppException.NotFound("Assignment"); await access.RequireManageAsync(a.CourseId, token); Validate(r);
+        // Existing submissions must retain the marks and passing rules under which they were made.
         var criteriaChanged = a.MaximumMarks != r.MaximumMarks || a.PassingPercentage != r.PassingPercentage || a.IsRequired != r.IsRequired;
         if (criteriaChanged) { await completion.EnsureCurriculumMutableAsync(a.CourseId, token); if (await db.Submissions.AnyAsync(s => s.AssignmentId == id, token)) throw AppException.Conflict("Grading criteria cannot change after submissions exist."); }
         Apply(a, r); await db.SaveChangesAsync(token); await completion.RecalculateCourseAsync(a.CourseId, token); return DtoMaps.Assignment.Compile()(a);
@@ -43,6 +45,7 @@ public sealed class AssignmentService(ILmsDbContext db, ICurrentUser user, Cours
     {
         var a = await FindAsync(id, ct); await access.RequireReadAsync(a.CourseId, ct);
         var course = await db.Courses.AsNoTracking().SingleAsync(c => c.Id == a.CourseId, ct); var q = db.Submissions.AsNoTracking().Where(s => s.AssignmentId == id);
+        // Managers can review the class; Students can only read their own answer and feedback.
         if (!access.CanManage(course)) q = q.Where(s => s.StudentId == user.Id);
         return await q.OrderByDescending(s => s.SubmittedAt).ThenBy(s => s.Id).Select(DtoMaps.Submission).PaginateAsync(page, ct);
     }
@@ -50,6 +53,7 @@ public sealed class AssignmentService(ILmsDbContext db, ICurrentUser user, Cours
     {
         var s = await db.Submissions.Include(s => s.Assignment).SingleOrDefaultAsync(s => s.Id == id, token) ?? throw AppException.NotFound("Submission"); await access.RequireManageAsync(s.Assignment.CourseId, token);
         if (r.Marks < 0 || r.Marks > s.Assignment.MaximumMarks) throw new AppException(400, "Marks must be between zero and the assignment maximum.");
+        // Once certified, changing marks could contradict the issued completion evidence.
         if (s.Marks != r.Marks && await db.Certificates.AnyAsync(c => c.CourseId == s.Assignment.CourseId && c.StudentId == s.StudentId, token)) throw AppException.Conflict("Marks cannot change after this student's certificate has been issued.");
         s.Marks = r.Marks; s.Feedback = r.Feedback; s.Status = SubmissionStatus.Graded; await db.SaveChangesAsync(token); await completion.EvaluateAsync(s.Assignment.CourseId, s.StudentId, token); return DtoMaps.Submission.Compile()(s);
     }, ct);

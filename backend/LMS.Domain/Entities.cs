@@ -18,6 +18,7 @@ public sealed class Course : Entity
     public string Category { get; set; } = "";
     public string? ThumbnailUrl { get; set; }
     public CourseStatus Status { get; set; } = CourseStatus.Draft;
+    // Course-level switches select requirement groups; each activity also has its own required flag.
     public bool RequireLessons { get; set; } = true;
     public bool RequireAssignments { get; set; } = true;
     public bool RequireQuizzes { get; set; } = true;

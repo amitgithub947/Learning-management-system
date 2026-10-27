@@ -13,6 +13,7 @@ using Microsoft.IdentityModel.Tokens;
 
 namespace LMS.Infrastructure.Identity;
 
+/// <summary>Coordinates Identity accounts, JWT issuance and persisted refresh-token sessions.</summary>
 public sealed class IdentityService(ApplicationDbContext db, UserManager<Account> users, SignInManager<Account> signIn, IOptions<JwtOptions> options) : IAuthService, IUserService
 {
     private readonly JwtOptions jwt = options.Value;
@@ -23,6 +24,7 @@ public sealed class IdentityService(ApplicationDbContext db, UserManager<Account
         {
             await using var tx = await db.Database.BeginTransactionAsync(ct);
             Check(await users.CreateAsync(account, r.Password));
+            // Public registration cannot grant Trainer or Admin permissions.
             Check(await users.AddToRoleAsync(account, Roles.Student));
             var response = await IssueAsync(account, Guid.NewGuid(), ct);
             await tx.CommitAsync(ct); return response;
@@ -124,6 +126,7 @@ public sealed class IdentityService(ApplicationDbContext db, UserManager<Account
             await RevokeUserTokensAsync(id, ct); await tx.CommitAsync(ct);
         });
     }
+    // Called inside serializable role/status transactions to prevent removing the final active Admin.
     private async Task EnsureAnotherAdminAsync(Guid id, CancellationToken ct)
     {
         var other = await (from u in db.Users join ur in db.UserRoles on u.Id equals ur.UserId join role in db.Roles on ur.RoleId equals role.Id where u.Id != id && u.IsActive && role.Name == Roles.Admin select u.Id).AnyAsync(ct);
@@ -138,6 +141,7 @@ public sealed class IdentityService(ApplicationDbContext db, UserManager<Account
             new("security_stamp",account.SecurityStamp!), new("sid",family.ToString()) };
         claims.AddRange(roles.Select(role => new Claim(ClaimTypes.Role, role)));
         var token = new JwtSecurityToken(jwt.Issuer, jwt.Audience, claims, DateTime.UtcNow, expires.UtcDateTime, new SigningCredentials(new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwt.SigningKey)), SecurityAlgorithms.HmacSha256));
+        // Return the random token only to the caller; persist its hash for lookup and revocation.
         var rawRefresh = Convert.ToBase64String(RandomNumberGenerator.GetBytes(64));
         db.RefreshTokens.Add(new RefreshToken { UserId = account.Id, TokenHash = Hash(rawRefresh), FamilyId = family, ExpiresAt = DateTimeOffset.UtcNow.AddDays(jwt.RefreshTokenDays) });
         await db.SaveChangesAsync(ct);

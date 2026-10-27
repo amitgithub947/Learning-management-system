@@ -9,11 +9,13 @@ using Microsoft.EntityFrameworkCore;
 
 namespace LMS.API;
 
+/// <summary>Reads the caller from authenticated claims rather than request-supplied user IDs.</summary>
 public sealed class CurrentUser(IHttpContextAccessor accessor) : ICurrentUser
 {
     public Guid Id => Guid.TryParse(accessor.HttpContext?.User.FindFirstValue(ClaimTypes.NameIdentifier), out var id) ? id : Guid.Empty;
     public bool IsInRole(string role) => accessor.HttpContext?.User.IsInRole(role) == true;
 }
+/// <summary>Runs the registered request validator before a controller action executes.</summary>
 public sealed class ValidationFilter(IServiceProvider services) : IAsyncActionFilter
 {
     public async Task OnActionExecutionAsync(ActionExecutingContext context, ActionExecutionDelegate next)
@@ -33,6 +35,7 @@ public sealed class GlobalExceptionHandler(ILogger<GlobalExceptionHandler> logge
     public async ValueTask<bool> TryHandleAsync(HttpContext context, Exception exception, CancellationToken ct)
     {
         var status = 500; var message = "An unexpected error occurred."; Dictionary<string, string[]>? errors = null;
+        // Translate known failures into the API envelope without leaking SQL details or stack traces.
         switch (exception)
         {
             case AppException app: status = app.StatusCode; message = app.Message; break;

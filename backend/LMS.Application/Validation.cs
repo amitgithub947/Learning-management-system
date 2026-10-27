@@ -2,6 +2,7 @@ using FluentValidation;
 using LMS.Domain;
 namespace LMS.Application;
 
+// These are request shape/length rules; ASP.NET Core Identity also enforces password complexity.
 public sealed class RegisterValidator : AbstractValidator<RegisterRequest>
 {
     public RegisterValidator()
@@ -50,6 +51,7 @@ public sealed class CourseValidator : AbstractValidator<CourseRequest>
         RuleFor(x => x.ThumbnailUrl).MaximumLength(2048).Must(ValidationRules.IsHttpUrl).WithMessage("Provide an absolute HTTP(S) URL.");
     }
 }
+// Optional media URLs may be blank; populated values must use HTTP(S), never local/script schemes.
 public static class ValidationRules
 {
     public static bool IsHttpUrl(string? url) => string.IsNullOrWhiteSpace(url) || (Uri.TryCreate(url, UriKind.Absolute, out var parsed) && parsed.Scheme is "http" or "https");

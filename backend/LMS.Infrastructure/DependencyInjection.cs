@@ -18,6 +18,7 @@ public static class DependencyInjection
 {
     public static IServiceCollection AddInfrastructure(this IServiceCollection services, IConfiguration configuration)
     {
+        // Fail startup on missing/unsafe token configuration instead of silently using fallback secrets.
         services.AddOptions<JwtOptions>().Bind(configuration.GetSection(JwtOptions.Section))
             .Validate(o => Encoding.UTF8.GetByteCount(o.SigningKey) >= 32, "Jwt:SigningKey must have at least 32 bytes; use a cryptographically random secret.")
             .Validate(o => !string.IsNullOrWhiteSpace(o.Issuer) && !string.IsNullOrWhiteSpace(o.Audience), "JWT issuer and audience are required.")
@@ -52,6 +53,7 @@ public static class DependencyInjection
             };
             o.Events = new JwtBearerEvents
             {
+                // A valid JWT signature alone is insufficient after session revocation or stamp changes.
                 OnTokenValidated = async context =>
                 {
                     var auth = context.HttpContext.RequestServices.GetRequiredService<IAuthService>();

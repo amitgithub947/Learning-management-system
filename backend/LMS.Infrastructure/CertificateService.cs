@@ -6,18 +6,21 @@ using LMS.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 namespace LMS.Infrastructure;
 
+/// <summary>Issues one certificate per eligible Student/course and separates public verification from downloads.</summary>
 public sealed class CertificateService(ApplicationDbContext db, ICurrentUser user, ICompletionService completion, IUnitOfWork work, ICertificateRenderer renderer, TimeProvider clock) : ICertificateService
 {
     private static readonly Expression<Func<Certificate, CertificateDto>> Map = c => new(c.Id, c.CourseId, c.CourseTitle, c.StudentName, c.TrainerName, c.CompletedAt, c.IssuedAt, c.CertificateNumber, c.VerificationCode);
     public Task<CertificateDto> IssueAsync(Guid courseId, CancellationToken ct) => work.ExecuteAsync(async token =>
     {
         if (!user.IsInRole(Roles.Student)) throw AppException.Forbidden();
+        // The serializable unit of work and unique database index protect simultaneous issue requests.
         var existing = await db.Certificates.AsNoTracking().Where(c => c.CourseId == courseId && c.StudentId == user.Id).Select(Map).SingleOrDefaultAsync(token);
         if (existing is not null) return existing;
         var progress = await completion.EvaluateAsync(courseId, user.Id, token);
         if (!progress.IsEligible) throw AppException.Conflict("Complete all course requirements before requesting a certificate.");
         var course = await db.Courses.AsNoTracking().SingleAsync(c => c.Id == courseId, token);
         var names = await db.Users.AsNoTracking().Where(u => u.Id == user.Id || u.Id == course.TrainerId).Select(u => new { u.Id, u.Name }).ToListAsync(token);
+        // Snapshot names and completion time so later profile/course edits cannot rewrite the achievement.
         var certificate = new Certificate
         {
             CourseId = courseId,
@@ -38,6 +41,7 @@ public sealed class CertificateService(ApplicationDbContext db, ICurrentUser use
         if (!string.IsNullOrWhiteSpace(page.Search)) q = q.Where(c => c.CourseTitle.Contains(page.Search) || c.CertificateNumber.Contains(page.Search));
         return q.OrderByDescending(c => c.IssuedAt).ThenBy(c => c.Id).Select(Map).PaginateAsync(page, ct);
     }
+    // Anonymous verification returns certificate facts only; the projection excludes user IDs and emails.
     public async Task<CertificateDto> VerifyAsync(string code, CancellationToken ct)
     {
         if (code.Length != 32 || !code.All(Uri.IsHexDigit)) throw AppException.NotFound("Certificate");
@@ -47,6 +51,7 @@ public sealed class CertificateService(ApplicationDbContext db, ICurrentUser use
     {
         var certificate = await db.Certificates.AsNoTracking().SingleOrDefaultAsync(c => c.Id == id, ct) ?? throw AppException.NotFound("Certificate");
         if (certificate.StudentId != user.Id && !user.IsInRole(Roles.Admin)) throw AppException.Forbidden();
+        // Render from the stored snapshot only after download authorization succeeds.
         return (renderer.Render(Map.Compile()(certificate)), certificate.CertificateNumber + ".pdf");
     }
 }
