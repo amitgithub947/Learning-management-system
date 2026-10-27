@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Learnwell — A little progress. A world of possibility.</title>
+    <base href="/" />
+    <script>
+      try {
+        const saved = localStorage.getItem('learnwell-theme');
+        document.documentElement.dataset.theme =
+          saved === 'dark' ||
+          (saved !== 'light' && window.matchMedia('(prefers-color-scheme: dark)').matches)
+            ? 'dark'
+            : 'light';
+      } catch {
+        document.documentElement.dataset.theme = 'light';
+      }
+    </script>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      name="description"
+      content="Build practical skills at your own pace. Explore courses, learn with expert trainers, and keep your progress moving with Learnwell."
+    />
+    <meta name="theme-color" content="#414be9" />
+    <link rel="icon" type="image/svg+xml" href="favicon.svg" />
+  </head>
+  <body>
+    <app-root></app-root>
+  </body>
+</html>

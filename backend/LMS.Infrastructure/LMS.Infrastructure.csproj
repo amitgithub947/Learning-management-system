@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+<ItemGroup>
+<ProjectReference Include="../LMS.Application/LMS.Application.csproj" />
+<PackageReference Include="Microsoft.AspNetCore.Identity.EntityFrameworkCore" Version="10.0.12" />
+<PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" Version="10.0.12" />
+<PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.12" PrivateAssets="all" />
+<PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="10.0.12" />
+<PackageReference Include="System.Security.Cryptography.Pkcs" Version="10.0.14" />
+<PackageReference Include="PDFsharp" Version="6.2.4" />
+<EmbeddedResource Include="Certificates/Fonts/*.ttf" />
+<None Update="Certificates/Fonts/OFL.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+</ItemGroup>
+</Project>

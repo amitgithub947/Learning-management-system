@@ -1,0 +1,7 @@
+<Project Sdk="Microsoft.NET.Sdk">
+<ItemGroup>
+<ProjectReference Include="../LMS.Domain/LMS.Domain.csproj" />
+<PackageReference Include="Microsoft.EntityFrameworkCore" Version="10.0.12" />
+<PackageReference Include="FluentValidation.DependencyInjectionExtensions" Version="12.1.1" />
+</ItemGroup>
+</Project>
